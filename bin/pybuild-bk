@@ -161,7 +161,6 @@ py() {
       --with-builtin-hashlib-hashes=md5,sha1,sha256,sha512,sha3,blake2 \
       --with-dbmliborder=gdbm:ndbm \
       --with-ensurepip \
-      --with-experimental-isolated-subinterpreters \
       --with-lto \
       --with-openssl="$(brew --prefix openssl@1.1)" \
       --with-system-expat \

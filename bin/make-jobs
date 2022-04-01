@@ -1,0 +1,7 @@
+#!/bin/sh
+
+#
+# jobs for make -j option
+
+set -eu
+nproc 2>/dev/null || sysctl -n hw.physicalcpu
