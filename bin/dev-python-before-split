@@ -1,56 +1,9 @@
-#!/bin/sh
-
-set -eu
+#!/usr/bin/env bash
 
 #
 # Installs python in $DEV_PREFIX
 
-trap 'rm -rf ${src}' 1 2 3 6
-
-: "${PYTHON_PREFIX=/opt}"
-: "${PYTHON_VERSION=3.10}"
-export PATH="${PYTHON_PREFIX}/bin:${PATH}"
-
-deps() {
-  if $MACOS; then
-    for i in openssl@1.1 xz gdbm; do
-      brew install --quiet $i
-    done
-  elif grep -q debian /etc/os-release 2>/dev/null; then
-    sudo apt-get update -qq
-    sudo apt-get install -qq build-essential gdb lcov pkg-config \
-      libbz2-dev libffi-dev libgdbm-dev libgdbm-compat-dev liblzma-dev \
-      libncurses5-dev libreadline6-dev libsqlite3-dev libssl-dev \
-      lzma lzma-dev tk-dev uuid-dev zlib1g-dev
-  fi
-}
-
-force(){ [ "${PYTHON_PREFIX}" = "/" ] || rm -rf "${PYTHON_PREFIX:?}"/*; }
-
-installed() { python --version 2>/dev/null | awk '{ print $2 }';}
-
-jobs() { nproc 2>/dev/null || sysctl -n hw.physicalcpu; }
-
-latest() {
-  if [ ! "${latest-}" ]; then
-    minor="$(curl -fsSL "${URL}" \
-    | awk -F '["/]' -v v="${PYTHON_VERSION}." '$2 ~ v { gsub(v, ""); print $2 }' | sort -V | tail -1)"
-    [ "${minor-}" ] || { echo Error Latest Version; exit 1; }
-    latest="${PYTHON_VERSION}.${minor}"
-  fi
-  echo "${latest}"
-}
-
-prefix() {
-  root="$(dirname "${PYTHON_PREFIX}")"
-  [ "${root}" = "/" ] || {
-    test -w "${root}" || {
-      $(command -v sudo) chown -R "$(id -u):$(id -g)" "${root}"
-      $(command -v sudo) chmod -R g+w "${root}"
-    }
-  }
-  mkdir -p "${PYTHON_PREFIX}/lib"
-}
+set -eu
 
 # PYTHON
 # https://devguide.python.org/setup/
@@ -75,7 +28,6 @@ py() {
 
 #    sed "s|испытание.pythontest.net|docs.python.org|" Lib/test/test_socket.py >/tmp/a
 #    mv /tmp/a Lib/test/test_socket.py
-    sqlite="$(brew --prefix sqlite)"
 
     ./configure \
       --enable-ipv6 \
@@ -92,7 +44,6 @@ py() {
       --with-system-expat \
       --with-system-ffi
 
-    make -j"$(jobs)" --quiet
     make test --quiet
     make install
     python -m ensurepip --upgrade --default-pip >/dev/null
@@ -100,8 +51,6 @@ py() {
   fi
   python -m pip install --quiet --upgrade pip setuptools wheel
 }
-
-python() { "${PYTHON_PREFIX}/bin/python3" "$@"; }
 
 sqlite(){
   src="${PYTHON_PREFIX}/src/sqlite"
@@ -159,33 +108,22 @@ EOS
   [ "$(sqlite3 < "${tmp}")" = "$(printf '%s\n' Sue Tim Bob)" ] || { echo "sqlite3 failed"; exit 1; }
 }
 
-tests() {
-  tmp="$(mktemp)"
-  cat > "${tmp}" <<EOF
-import dbm
-
-with dbm.ndbm.open("test", "c") as db:
-    db[b"foo \\xbd"] = b"bar \\xbd"
-with dbm.ndbm.open("test", "r") as db:
-    assert list(db.keys()) == [b"foo \\xbd"]
-    assert b"foo \\xbd" in db
-    assert db[b"foo \\xbd"] == b"bar \\xbd"
-EOF
-  python "${tmp}"
-
-  tmp="$(mktemp -d)"
-  python -m venv "${tmp}"
-
-  for i in _bz2 _ctypes _dbm _decimal _gdbm _sqlite3 _lzma _ssl _tkinter _uuid pyexpat readline zlib; do
-    python -c "import ${i}"
-  done
-
-  python -c "import sqlite3; sqlite3.connect(':memory:').enable_load_extension(True)"
-
-  "${PYTHON_PREFIX}/bin/pip3" install --quiet --upgrade pip setuptools wheel
-}
-
+#######################################
+# description
+# Globals:
+#   MACOS
+#   PATH
+#   PYTHON_PREFIX
+#   URL
+# Arguments:
+#  None
+#######################################
 main() {
+  trap 'rm -rf ${src}' 1 2 3 6
+  # shellcheck source=./dev-env.bash
+  . "$(dirname "$0")/dev-env.bash"
+  export PATH="${PYTHON_PREFIX}/bin:${PATH}"
+
   URL="https://www.python.org/ftp/python"
   MACOS=true; [ "$(uname -s)" = "Darwin" ] || MACOS=false
 
