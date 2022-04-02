@@ -49,7 +49,7 @@ _deps() {
 _die() {
   local rc=$? c p s
   [ $rc -eq 0 ] || { c="red"; p="${0##*/}: "; s="✘";}
-  >&2 printf -- "%s\n" "$(git config --get-color "" "${c:-green} bold")${s:-✔}$(git config --get-color "" reset) ${p}$*"
+  >&2 printf -- "%s\n" "$(git config --get-color "" "${c:-green} bold")${s:-✔}$(git config --get-color "" reset) ${p:-}$*"
   exit $rc
 }
 
@@ -82,16 +82,16 @@ with dbm.ndbm.open("test", "r") as db:
     assert b"foo \\xbd" in db
     assert db[b"foo \\xbd"] == b"bar \\xbd"
 EOF
-  python "${tmp}"
+  _python "${tmp}"
 
   tmp="$(mktemp -d)"
-  python -m venv "${tmp}"
+  _python -m venv "${tmp}"
 
   for i in _bz2 _ctypes _dbm _decimal _gdbm _io _sqlite3 _lzma _ssl _tkinter _uuid pyexpat readline zlib; do
-    python -c "import ${i}"
+    _python -c "import ${i}"
   done
 
-  python -c "import sqlite3; sqlite3.connect(':memory:').enable_load_extension(True)"
+  _python -c "import sqlite3; sqlite3.connect(':memory:').enable_load_extension(True)"
 
   "${DEV_BIN}/pip3" install --quiet --upgrade pip setuptools wheel
 }
@@ -192,7 +192,6 @@ upgrade() {
   configure+=("--with-dtrace")
 
   sqlite="$(brew --prefix sqlite)"
-  export PATH="${sqlite}/bin:${PATH}"
   # Alt 2:
   # LD_RUN_PATH="${sqlite}/lib" configure LDFLAGS="${ldflags-}"  CPPFLAGS="${cppflags-}" …
   # LD_RUN_PATH="${sqlite}/lib" make
@@ -201,12 +200,10 @@ upgrade() {
   #
   #     LDFLAGS_NODIST="-L${sqlite}/lib -Wl,-rpath-link=${sqlite}/lib"
   # ld: warning: directory not found for option '-L/usr/lib/termcap'
-configure+=(
+  configure+=(
     CPPFLAGS="-I${sqlite}/include"
-    LDFLAGS="-L${sqlite}/lib"
+    LDFLAGS="-L${sqlite}/lib -Wl,-rpath,${sqlite}/lib"
 )
-else
-  configure+=("--enable-shared")
 fi
 
   configure+=(
@@ -223,8 +220,12 @@ fi
     "--with-system-expat"
     "--with-system-ffi"
 )
-  LD_RUN_PATH="${sqlite}/lib" ./configure "${configure[@]}"
-  LD_RUN_PATH="${sqlite}/lib" make -j"$(make-jobs)" --quiet
+  ./configure "${configure[@]}" --quiet
+  make -j"$(make-jobs)" --quiet
+  make test --quiet
+  make install --quiet
+  _python -m ensurepip --upgrade --default-pip >/dev/null
+  _tests
 
   installed="$(installed)"
   _die "Python: Upgraded: ${installed}"

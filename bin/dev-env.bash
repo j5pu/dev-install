@@ -5,6 +5,10 @@
 
 [  "${BASH_SOURCE-}" ] || return 0
 
+# Build Python with Dependencies Build from Source in $DEV_PREFIX
+#
+export DEV_DEPS=1
+
 # Installation Prefix for Development
 #
 export DEV_PREFIX="/opt"
@@ -12,6 +16,13 @@ export DEV_PREFIX="/opt"
 # Python Major Minor Version
 #
 export PYTHON_VERSION="3.10"
+
+#######################################
+# wrapper for command -v
+# Arguments:
+#  1    command to check
+#######################################
+_has() { command -v "$1" >/dev/null; }
 
 #######################################
 # sources completions in $DEV_PREFIX and/or default completions in brew or /usr/local if not sourced already
@@ -25,7 +36,10 @@ export PYTHON_VERSION="3.10"
 #######################################
 __dev_completion() {
   local __brew_completion
-  if ! declare -pf _split_longopt &>/dev/null; then
+  if _has autoload && ! _has bashcompinit; then
+    autoload -U +X bashcompinit && bashcompinit
+  fi
+  if ! _has _split_longopt &>/dev/null; then
     ! test -f /usr/share/bash-completion/bash_completion || . /usr/share/bash-completion/bash_completion
     __brew_completion="$(brew --prefix 2>/dev/null)/etc/profile.d/bash_completion.sh"
     [ ! -f "${__brew_completion}" ] || . "${__brew_completion}"
@@ -47,15 +61,18 @@ __dev_completion() {
 #   1
 #######################################
 __dev_paths() {
-  if ! command -v "${BASH_SOURCE[0]##*/}" >/dev/null; then
+  if ! _has "${BASH_SOURCE[0]##*/}"; then
     PATH="${1}:${PATH}"
-    # bashsupport disable=BP2001
     MANPATH="$(dirname "$1")/share/man${MANPATH:+:${MANPATH%:$''*}}:"
   fi
 
   if ! [[ "${PATH}" =~ ${DEV_BIN}: ]]; then
     PATH="${DEV_BIN}:${PATH}"
     MANPATH="${DEV_MAN}${MANPATH:+:${MANPATH%:$''*}}:"
+  fi
+  if [ "${DEV_DEPS-1}" = 1 ] && ! [[ "${LD_LIBRARY_PATH-}" =~ ${DEV_LIB}: ]]; then
+    LD_LIBRARY_PATH="${DEV_LIB}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+    PKG_CONFIG_PATH="${DEV_LIB}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
   fi
 }
 
@@ -127,6 +144,10 @@ if [ ! "${__DEV_ENV_SOURCED-}" ]; then
   #
   export DEV_SRC="${DEV_PREFIX}/src"
 
+  export LD_LIBRARY_PATH
+  export MANPATH
+  export PKG_CONFIG_PATH
+
   __dev_root="$(dirname "${DEV_PREFIX}")"
   if [ "${__dev_root}" != "/" ]; then
     if ! test -O "${__dev_root}" || ! test -G "${__dev_root}"; then
@@ -141,10 +162,10 @@ if [ ! "${__DEV_ENV_SOURCED-}" ]; then
   __dev_paths "${__dev_dirname}"
 
   if [ "${BASH_SOURCE[0]##*/}" = "${0##*/}" ]; then
-    for __dev_variable in DEV_PREFIX PYTHON_VERSION \
+    for __dev_variable in DEV_DEPS DEV_PREFIX PYTHON_VERSION \
       DARWIN DEBIAN \
       DEV_BIN DEV_INCLUDE DEV_LIB DEV_SHARE DEV_MAN DEV_SRC \
-      MANPATH PATH ; do
+      LD_LIBRARY_PATH MANPATH PKG_CONFIG_PATH PATH ; do
         echo "export ${__dev_variable}=${!__dev_variable}"
     done
   fi
